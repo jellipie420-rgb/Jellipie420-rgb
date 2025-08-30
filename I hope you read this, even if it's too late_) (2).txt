@@ -1,4 +1,128 @@
-嗨，莉，我只是想告诉你我喜欢你，但我不是想让你也喜欢我，我只是想告诉你，因为我一直很担心。我承认这几天你没跟我说话，我确实很想你，但我没有生气也没有难过，也许你只是忙于自己的生活。 你想知道我为什么喜欢你吗？哈哈，我会告诉你，即使你不在乎，我也不知道，也许是因为和你在一起我觉得很安全，你让我的笑容传入我的耳中，你的短信让我咯咯地笑，我们几乎不认识，但我觉得我已经认识你很久了。你实际上是我喜欢的第一个男孩，也是我表白的第一个男孩。
-我甚至不知道你是否会读到这封信。 但如果你读到了……我只想让你知道，我有时还是会想你。只是宇宙从未给我们足够的空间去成为“我们”。 我只是想知道……如果我们在人生的另一个阶段相遇，结局会不会不一样？ 总之，我希望你一切都好，即使我们已不再是彼此的陪伴。
-祝你一切顺利，莉，无论发生什么，都希望你永远面带微笑。别担心，我不再喜欢你了，所以你不必为此感到内疚，哈哈。即使我们相隔万里，我依然会一直支持你。我也希望你能找到一个爱你本来面目的人。 这实际上是我最后一次和你说话了，所以我要说再见了，谢谢你做我的朋友。如果有一天我来中国，我希望我们有一天能相遇。💐
-PS: i just translated it in Google so it won't be hard for you to read it:)
+"""
+Confession Video Generator (Auto-open + Record Button)
+------------------------------------------------------
+This script outputs a **self-contained HTML slideshow** of your love letter.
+When run, it will:
+1. Generate `confession_slides.html`.
+2. Automatically open it in Google Chrome (if installed).
+
+In the browser, you can:
+- Click **Play** to preview.
+- Click **Record** to export a video (`confession.webm`).
+- (Optional) Load background music before recording.
+"""
+
+from __future__ import annotations
+import json, os, re, webbrowser, shutil
+from pathlib import Path
+import unittest
+
+# ========== LETTER CONTENT =============
+LETTER_TEXT = (
+    "嗨，莉，我只是想告诉你我喜欢你，但我不是想让你也喜欢我，我只是想告诉你，因为我一直很担心。"
+    "我承认这几天你没跟我说话，我确实很想你，但我没有生气也没有难过，也许你只是忙于自己的生活。 "
+    "你想知道我为什么喜欢你吗？哈哈，我会告诉你，即使你不在乎，我也不知道，也许是因为和你在一起我觉得很安全，你让我的笑容传入我的耳中，"
+    "你的短信让我咯咯地笑，我们几乎不认识，但我觉得我已经认识你很久了。"
+    "你实际上是我喜欢的第一个男孩，也是我表白的第一个男孩。\n"
+    "我甚至不知道你是否会读到这封信。 但如果你读到了……我只想让你知道，我有时还是会想你。"
+    "只是宇宙从未给我们足够的空间去成为“我们”。 我只是想知道……如果我们在人生的另一个阶段相遇，结局会不会不一样？"
+    " 总之，我希望你一切都好，即使我们已不再是彼此的陪伴。\n"
+    "祝你一切顺利，莉，无论发生什么，都希望你永远面带微笑。"
+    "别担心，我不再喜欢你了，所以你不必为此感到内疚，哈哈。"
+    "即使我们相隔万里，我依然会一直支持你。"
+    "我也希望你能找到一个爱你本来面目的人。 "
+    "这实际上是我最后一次和你说话了，所以我要说再见了，谢谢你做我的朋友。"
+    "如果有一天我来中国，我希望我们有一天能相遇。💐\n"
+    "PS: i just translated it in Google so it won't be hard for you to read it:)"
+)
+
+# ========== OPTIONS =============
+WIDTH, HEIGHT = 1080, 1920   # portrait
+MARGIN = 120
+FONT_FAMILY = "sans-serif"
+FONT_SIZE, LINE_HEIGHT = 64, 84
+BG_COLOR, TEXT_COLOR = "#000000", "#FFFFFF"
+BOX_BG = "rgba(0,0,0,0.45)"
+FADE_SEC, BASE_SLIDE_SEC, PER_CHAR_SEC = 0.8, 4.0, 0.05
+MAX_CHARS_PER_SLIDE = 95
+OUTPUT_HTML = "confession_slides.html"
+
+# ========== FUNCTIONS =============
+
+def split_into_slides(text: str, max_chars: int = 95) -> list[str]:
+    parts = re.split(r"([。！？!\?…\n])", text)
+    sentences = []
+    for i in range(0, len(parts), 2):
+        s = parts[i].strip()
+        d = parts[i+1] if i+1 < len(parts) else ""
+        if s or d:
+            sentences.append((s + d).strip())
+    slides, buf = [], ""
+    for sent in sentences:
+        if len(buf) + len(sent) <= max_chars:
+            buf = (buf + " " + sent).strip()
+        else:
+            if buf:
+                slides.append(buf)
+            buf = sent
+    if buf: slides.append(buf)
+    return slides or [text]
+
+def compute_durations(slides: list[str]) -> list[float]:
+    return [round(max(3.0, min(BASE_SLIDE_SEC + len(s)*PER_CHAR_SEC, 12.0)), 2) for s in slides]
+
+def build_html(slides: list[str]) -> str:
+    slides_json, durations_json = json.dumps(slides, ensure_ascii=False), json.dumps(compute_durations(slides))
+    return f"""
+<!doctype html><html lang=zh><head><meta charset=utf-8>
+<title>Confession Slides</title>
+<style>
+ body {{margin:0;display:grid;place-items:center;background:#111;color:#fff;}}
+ canvas {{width: min(100%, {WIDTH}px);border-radius:20px;}}
+ .controls {{margin-top:10px;}}
+ button {{margin:5px;padding:8px 16px;font-size:16px;}}
+</style></head><body>
+<canvas id=stage width={WIDTH} height={HEIGHT}></canvas>
+<div class=controls>
+ <button onclick=playSlides()>▶️ Play</button>
+ <button onclick=startRecord()>⏺️ Record</button>
+ <a id=download style="display:none" download="confession.webm">⬇️ Download</a>
+</div>
+<script>
+const slides={slides_json};const durations={durations_json};
+const W={WIDTH},H={HEIGHT},M={MARGIN},F={FONT_SIZE},LINE={LINE_HEIGHT},BG="{BG_COLOR}",TC="{TEXT_COLOR}",BOX="{BOX_BG}",FADE={FADE_SEC};
+const ctx=document.getElementById('stage').getContext('2d');
+let start=null,playing=false;
+function wrap(txt,w){{let ch=[...txt],out=[''],i=0;for(let c of ch){{if(ctx.measureText(out[i]+c).width>w)out[++i]=''+c;else out[i]+=c;}}return out;}}
+function draw(t){{ctx.fillStyle=BG;ctx.fillRect(0,0,W,H);let total=durations.reduce((a,b)=>a+b,0);let e=(t-start)/1000;if(e>total){{playing=false;return;}}let acc=0,idx=0;for(idx=0;idx<durations.length;idx++){{if(e<acc+durations[idx])break;acc+=durations[idx];}}let lt=e-acc,cur=durations[idx],a=1;if(lt<FADE)a=lt/FADE;else if(cur-lt<FADE)a=(cur-lt)/FADE;ctx.globalAlpha=1;ctx.fillStyle=BOX;ctx.fillRect(M,M,W-M*2,H-M*2);ctx.globalAlpha=a;ctx.fillStyle=TC;ctx.font=`${{F}}px {FONT_FAMILY}`;let lines=wrap(slides[idx],W-M*2-40);let y=M+(H-M*2-lines.length*LINE)/2;for(let l of lines){{ctx.fillText(l,M+20,y);y+=LINE;}}}}
+function anim(ts){{if(!start)start=ts;draw(ts);if(playing)requestAnimationFrame(anim);}}
+function playSlides(){{start=null;playing=true;requestAnimationFrame(anim);}}
+// Recording
+let mediaRecorder, chunks=[];
+function startRecord(){{chunks=[];const stream=document.getElementById('stage').captureStream(30);mediaRecorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});mediaRecorder.ondataavailable=e=>{{if(e.data.size>0)chunks.push(e.data);}};mediaRecorder.onstop=()=>{{let blob=new Blob(chunks,{{type:'video/webm'}});let url=URL.createObjectURL(blob);let a=document.getElementById('download');a.href=url;a.style.display='inline';}};mediaRecorder.start();playSlides();setTimeout(()=>mediaRecorder.stop(),durations.reduce((a,b)=>a+b,0)*1000+500);}}
+</script></body></html>"""
+
+# ========== MAIN =============
+
+def main():
+    slides = split_into_slides(LETTER_TEXT, MAX_CHARS_PER_SLIDE)
+    html = build_html(slides)
+    Path(OUTPUT_HTML).write_text(html, encoding="utf-8")
+    print(f"Created {OUTPUT_HTML} with {len(slides)} slides.")
+    chrome = shutil.which("google-chrome") or shutil.which("chrome") or shutil.which("chromium")
+    if chrome:
+        webbrowser.get(using=chrome).open(OUTPUT_HTML)
+    else:
+        webbrowser.open(OUTPUT_HTML)
+
+# ========== TESTS =============
+class Test(unittest.TestCase):
+    def test_split(self):
+        s=split_into_slides("你好。世界。",5);self.assertGreater(len(s),0)
+    def test_html(self):
+        h=build_html(["test"]);self.assertIn("<canvas",h)
+        self.assertIn("Record",h)
+
+if __name__=="__main__":
+    if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Test)).wasSuccessful():
+        main()
